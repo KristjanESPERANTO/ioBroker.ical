@@ -11,7 +11,6 @@ const utils = require('@iobroker/adapter-core');
 const adapterName = require('./package.json').name.split('.').pop();
 
 const ce = require('cloneextend');
-const axios = require('axios');
 
 let adapter;
 let stopped = false;
@@ -283,27 +282,29 @@ async function getICal(urlOrFile, user, pass, sslignore, calName, cb) {
     } else {
         // Find out whether SSL certificate errors shall be ignored
         const options = {
-            method: 'get',
-            url: urlOrFile,
+            method: 'GET',
         };
 
-        if (adapter.config.customUserAgentEnabled && adapter.config.customUserAgent) {
-            options.headers = {
-                'User-Agent': adapter.config.customUserAgent,
-            };
-        }
+        // Headers setup
+        const headers = {};
 
-        if (sslignore === 'ignore' || sslignore === 'true' || sslignore === true) {
-            options.httpsAgent = new https.Agent({
-                rejectUnauthorized: false,
-            });
+        if (adapter.config.customUserAgentEnabled && adapter.config.customUserAgent) {
+            headers['User-Agent'] = adapter.config.customUserAgent;
         }
 
         if (user) {
-            options.auth = {
-                username: user,
-                password: pass,
-            };
+            const auth = Buffer.from(`${user}:${pass}`).toString('base64');
+            headers['Authorization'] = `Basic ${auth}`;
+        }
+
+        if (Object.keys(headers).length > 0) {
+            options.headers = headers;
+        }
+
+        if (sslignore === 'ignore' || sslignore === 'true' || sslignore === true) {
+            options.agent = new https.Agent({
+                rejectUnauthorized: false,
+            });
         }
 
         const calHash = crypto
@@ -312,11 +313,17 @@ async function getICal(urlOrFile, user, pass, sslignore, calName, cb) {
             .digest('hex');
         const cachedFilename = path.join(os.tmpdir(), `iob-${calHash}.ics`);
 
-        axios(options)
-            .then(function (response) {
-                if (response.data) {
+        fetch(urlOrFile, options)
+            .then(async function (response) {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.text();
+
+                if (data) {
                     try {
-                        fs.writeFileSync(cachedFilename, response.data, 'utf-8');
+                        fs.writeFileSync(cachedFilename, data, 'utf-8');
                         adapter.log.debug(
                             `Successfully cached content for calendar "${urlOrFile}" as ${cachedFilename}`,
                         );
@@ -324,7 +331,7 @@ async function getICal(urlOrFile, user, pass, sslignore, calName, cb) {
                         adapter.log.error(`Cannot write cached file: ${err}`);
                     }
 
-                    cb && cb(null, response.data);
+                    cb && cb(null, data);
                 } else {
                     cb && cb(`Error reading from URL "${urlOrFile}": Received no data`);
                 }
@@ -333,19 +340,7 @@ async function getICal(urlOrFile, user, pass, sslignore, calName, cb) {
                 let cachedContent;
                 let cachedDate;
 
-                if (error.response) {
-                    // The request was made and the server responded with a status code
-                    // that falls out of the range of 2xx
-                    adapter.log.warn(`Error reading from URL "${urlOrFile}": ${error.response.status}`);
-                } else if (error.request) {
-                    // The request was made but no response was received
-                    // `error.request` is an instance of XMLHttpRequest in the browser and an instance of
-                    // http.ClientRequest in node.js
-                    adapter.log.warn(`Error reading from URL "${urlOrFile}"`);
-                } else {
-                    // Something happened in setting up the request that triggered an Error
-                    adapter.log.warn(`Error reading from URL "${urlOrFile}": ${error.message}`);
-                }
+                adapter.log.warn(`Error reading from URL "${urlOrFile}": ${error.message}`);
 
                 try {
                     if (fs.existsSync(cachedFilename)) {

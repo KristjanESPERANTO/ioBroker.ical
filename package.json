@@ -25,7 +25,6 @@
   },
   "dependencies": {
     "@iobroker/adapter-core": "^3.3.2",
-    "axios": "^1.13.2",
     "cloneextend": "^0.0.3",
     "json-schema": "^0.4.0",
     "node-ical": "^0.23.0"
@@ -72,6 +71,7 @@
     "test:js": "mocha --config test/mocharc.custom.json \"{!(node_modules|test)/**/*.test.js,*.test.js,test/**/test!(PackageFiles|Startup).js}\"",
     "test:package": "mocha test/package --exit",
     "test:integration": "mocha test/integration --exit",
+    "test:integration-http": "mocha test/integration-http --exit",
     "test": "npm run test:js && npm run test:package",
     "lint": "eslint -c eslint.config.mjs .",
     "translate": "translate-adapter",
